@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -54,18 +55,52 @@ const NAV_ITEMS = [
 export default function AppShell({ children }) {
   const { user, signOut } = useAuth()
   const displayName = getDisplayName(user?.email)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <div className="min-h-screen flex">
-      {/* Sidebar - icon-only on mobile, full width on md+ */}
-      <aside className="w-16 md:w-56 flex-shrink-0 border-r border-gray-800/50 bg-gray-950/90 flex flex-col fixed inset-y-0 left-0 z-20 transition-all duration-200">
+      {/* Mobile hamburger button */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-30 w-10 h-10 rounded-lg bg-gray-900 border border-gray-700 flex items-center justify-center text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+        style={{ display: sidebarOpen ? 'none' : undefined }}
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+      </button>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/60 z-20"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar - hidden on mobile, slides in when toggled */}
+      <aside
+        className={`w-56 flex-shrink-0 border-r border-gray-800/50 bg-gray-950 flex flex-col fixed inset-y-0 left-0 z-30 transition-transform duration-300 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0`}
+      >
+        {/* Mobile close button */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="md:hidden absolute top-4 right-3 w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
         {/* Logo */}
-        <div className="px-3 md:px-5 pt-5 pb-4 flex justify-center md:justify-start">
+        <div className="px-5 pt-5 pb-4">
           <NavLink to="/" className="flex items-center gap-2.5 transition-all duration-300 hover:drop-shadow-[0_0_8px_rgba(74,222,128,0.5)]">
-            <div className="w-8 h-8 rounded-lg bg-forge-500/15 border border-forge-500/20 flex items-center justify-center text-sm flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-forge-500/15 border border-forge-500/20 flex items-center justify-center text-sm">
               &#x2692;
             </div>
-            <span className="text-lg font-bold tracking-tight hidden md:inline">
+            <span className="text-lg font-bold tracking-tight">
               <span className="text-forge-400">Day</span>
               <span className="text-gray-100">Forge</span>
             </span>
@@ -73,14 +108,14 @@ export default function AppShell({ children }) {
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 px-2 md:px-3 space-y-1">
-          <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-600 mb-2 hidden md:block">Tools</p>
+        <nav className="flex-1 px-3 space-y-1">
+          <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-600 mb-2">Tools</p>
           {NAV_ITEMS.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
-              title={item.label}
+              onClick={() => setSidebarOpen(false)}
               className={({ isActive }) => {
                 const activeColors = {
                   forge: 'text-forge-400 bg-forge-500/10 border-forge-500/20',
@@ -88,7 +123,7 @@ export default function AppShell({ children }) {
                   news: 'text-news-400 bg-news-500/10 border-news-500/20',
                   purple: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
                 }
-                return `flex items-center justify-center md:justify-start gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${
+                return `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 border ${
                   isActive
                     ? activeColors[item.color]
                     : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40 border-transparent'
@@ -96,18 +131,18 @@ export default function AppShell({ children }) {
               }}
             >
               {item.icon}
-              <span className="hidden md:inline">{item.label}</span>
+              {item.label}
             </NavLink>
           ))}
         </nav>
 
         {/* User section */}
-        <div className="p-2 md:p-3 border-t border-gray-800/50">
-          <div className="flex items-center justify-center md:justify-start gap-3 px-0 md:px-2 py-2">
+        <div className="p-3 border-t border-gray-800/50">
+          <div className="flex items-center gap-3 px-2 py-2">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-forge-500 to-forge-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
               {displayName.charAt(0)}
             </div>
-            <div className="flex-1 min-w-0 hidden md:block">
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-200 truncate">{displayName}</p>
               <button
                 onClick={signOut}
@@ -121,8 +156,8 @@ export default function AppShell({ children }) {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 ml-16 md:ml-56 min-h-screen">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8">
+      <main className="flex-1 ml-0 md:ml-56 min-h-screen">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 pt-16 md:pt-8">
           {children}
         </div>
       </main>
