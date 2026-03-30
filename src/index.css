@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-forge-50: #f0fdf4;
+  --color-forge-100: #dcfce7;
+  --color-forge-200: #bbf7d0;
+  --color-forge-300: #86efac;
+  --color-forge-400: #4ade80;
+  --color-forge-500: #22c55e;
+  --color-forge-600: #16a34a;
+  --color-forge-700: #15803d;
+  --color-forge-800: #166534;
+  --color-forge-900: #14532d;
+}
+
+body {
+  @apply bg-gray-950 text-gray-100 min-h-screen;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
