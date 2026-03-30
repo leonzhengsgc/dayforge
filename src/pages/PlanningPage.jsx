@@ -1,7 +1,111 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+
+const LS_KEY = 'dayforge_plans'
+function lsLoad() { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] } }
+function lsSave(plans) { try { localStorage.setItem(LS_KEY, JSON.stringify(plans)) } catch {} }
+
+function AutoTextarea({ value, onChange, placeholder, className }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      rows={1}
+      style={{ overflow: 'hidden', resize: 'none' }}
+      className={className}
+    />
+  )
+}
 import AppShell from '../components/layout/AppShell'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+
+const CUR_Q = Math.ceil((new Date().getMonth() + 1) / 3)
+const CUR_YEAR = new Date().getFullYear()
+
+const TEMPLATES = [
+  {
+    id: 'vision',
+    label: 'Vision Doc',
+    emoji: '🔭',
+    description: 'Clarify where you\'re going and why it matters',
+    color: 'purple',
+    fill: {
+      title: `Vision ${CUR_YEAR + 1}`,
+      vision: `━━ PURPOSE ━━\nWhy does this exist? What problem are we ultimately solving?\n[Answer here]\n\n━━ NORTH STAR ━━\nOne sentence that captures where we are going:\n[Answer here]\n\n━━ 3-YEAR PICTURE ━━\nIf everything goes right, in 3 years we will have:\n- \n- \n- \n\n━━ SUCCESS METRICS ━━\nWe will know we've arrived when we can measure:\n- Metric 1: \n- Metric 2: \n- Metric 3: \n\n━━ CORE BELIEFS ━━\nThe non-negotiable principles that guide every decision:\n1. We believe that...\n2. We will never...\n3. We always...`,
+      goals: `━━ 12-MONTH MILESTONES ━━\nThe specific things that must be true by end of year:\n[ ] Milestone 1: \n[ ] Milestone 2: \n[ ] Milestone 3: \n[ ] Milestone 4: \n\n━━ MUST ACHIEVE (Top 3 Priorities) ━━\nIf we only do three things this year, they are:\n1. \n2. \n3. \n\n━━ ANTI-GOALS (What We Are NOT Doing) ━━\nExplicitly out of scope — helps avoid distraction:\n- We will NOT: \n- We will NOT: \n- We will NOT: \n\n━━ DEPENDENCIES & RESOURCES ━━\nWhat do we need to make this vision real?\n- People: \n- Budget: \n- Tools/systems: \n- External partners: \n\n━━ BIGGEST RISK TO THIS VISION ━━\nWhat is the single most likely thing to derail us?\n[Answer here]\n\nHow we'll mitigate it:\n[Answer here]`,
+      status: 'draft',
+    },
+  },
+  {
+    id: 'plan',
+    label: 'Strategic Plan',
+    emoji: '🗺️',
+    description: 'Map out every step from idea to execution',
+    color: 'amber',
+    fill: {
+      title: 'Strategic Plan — ',
+      vision: `━━ SITUATION ANALYSIS ━━\nWhat is the current state of play?\n[Describe where things stand today]\n\n━━ PROBLEM STATEMENT ━━\nThe specific problem this plan solves:\n[Answer here]\n\n━━ TARGET OUTCOME ━━\nWhat does success look like when this plan is complete?\n[Answer here]\n\n━━ UNIQUE INSIGHT ━━\nWhat do we know or believe that others don't?\n[The core insight that makes this plan right]\n\n━━ WHO IS THIS FOR ━━\nPrimary audience / stakeholder:\n- Who benefits most: \n- Their biggest pain: \n- What they value: \n\n━━ COMPETITIVE ADVANTAGE ━━\nWhy are WE the ones to execute this?\n[Answer here]`,
+      goals: `━━ OBJECTIVES & KEY RESULTS ━━\n\nObjective 1: \n  KR 1.1: \n  KR 1.2: \n  KR 1.3: \n\nObjective 2: \n  KR 2.1: \n  KR 2.2: \n  KR 2.3: \n\nObjective 3: \n  KR 3.1: \n  KR 3.2: \n  KR 3.3: \n\n━━ EXECUTION PHASES ━━\n\nPhase 1 — Foundation (Month 1–2):\n[ ] \n[ ] \n[ ] \nDeliverable: \n\nPhase 2 — Build (Month 3–4):\n[ ] \n[ ] \n[ ] \nDeliverable: \n\nPhase 3 — Launch (Month 5–6):\n[ ] \n[ ] \n[ ] \nDeliverable: \n\n━━ RISKS & MITIGATIONS ━━\nRisk 1: \n  Mitigation: \n\nRisk 2: \n  Mitigation: \n\n━━ DECISION LOG ━━\nKey decisions made while building this plan:\n- [Date]: \n- [Date]: `,
+      status: 'active',
+    },
+  },
+  {
+    id: 'quarterly',
+    label: 'Quarterly Planner',
+    emoji: '📅',
+    description: 'Nail this quarter with focused priorities',
+    color: 'forge',
+    fill: {
+      title: `Q${CUR_Q} ${CUR_YEAR} Planner`,
+      vision: `━━ QUARTER THEME ━━\nOne word or phrase that defines this quarter:\n[e.g. "Foundation", "Growth", "Consolidation"]\n\n━━ TOP 3 PRIORITIES ━━\nIf I only accomplish these three things this quarter, I win:\n1. \n2. \n3. \n\n━━ WHAT DOES A SUCCESSFUL QUARTER LOOK LIKE? ━━\n[Describe the end state. Be specific — numbers, deliverables, feelings]\n\n━━ WHAT AM I CARRYING OVER FROM LAST QUARTER? ━━\nUnfinished business / lessons learned:\n- \n- \n\n━━ WHAT AM I DROPPING THIS QUARTER? ━━\nThings I'm intentionally not doing to stay focused:\n- \n- `,
+      goals: `━━ MONTHLY BREAKDOWN ━━\n\nMonth 1 — [Theme]:\n[ ] Week 1: \n[ ] Week 2: \n[ ] Week 3: \n[ ] Week 4: \nMonth 1 goal: \n\nMonth 2 — [Theme]:\n[ ] Week 1: \n[ ] Week 2: \n[ ] Week 3: \n[ ] Week 4: \nMonth 2 goal: \n\nMonth 3 — [Theme]:\n[ ] Week 1: \n[ ] Week 2: \n[ ] Week 3: \n[ ] Week 4: \nMonth 3 goal: \n\n━━ WEEKLY CHECK-IN PROMPTS ━━\nUse these every Monday:\n1. What's the #1 thing I must do this week?\n2. What is threatening my quarterly priorities?\n3. What did I learn last week?\n\n━━ END-OF-QUARTER RETROSPECTIVE ━━\nAnswer these at quarter close:\n- What went well: \n- What didn't: \n- What I'll do differently: \n- Carry into next quarter: `,
+      status: 'active',
+    },
+  },
+  {
+    id: 'swot',
+    label: 'SWOT Analysis',
+    emoji: '⚡',
+    description: 'Audit your position before making a big move',
+    color: 'news',
+    fill: {
+      title: 'SWOT Analysis — ',
+      vision: `━━ CONTEXT ━━\nWhat decision or situation is this analysis for?\n[e.g. "Launching a new product", "Entering a new market", "Evaluating a career pivot"]\n\n━━ SCOPE ━━\nAre we analyzing: [ ] A business  [ ] A product  [ ] A person  [ ] A project\nTime horizon: \nKey question this SWOT must answer: \n\n━━ STRENGTHS (Internal — What We're Good At) ━━\nS1. \nS2. \nS3. \nS4. \nS5. \n\nProbing questions to find real strengths:\n→ What do we do better than anyone else?\n→ What unique resources or knowledge do we have?\n→ What do customers/others praise us for?\n→ What advantages do we have that others can't easily copy?\n\n━━ WEAKNESSES (Internal — What Holds Us Back) ━━\nW1. \nW2. \nW3. \nW4. \nW5. \n\nProbing questions to uncover real weaknesses:\n→ What do we consistently fail at or avoid?\n→ Where do we lose to competitors?\n→ What do we lack (skills, capital, tech, people)?\n→ What would our critics say about us?`,
+      goals: `━━ OPPORTUNITIES (External — What We Can Exploit) ━━\nO1. \nO2. \nO3. \nO4. \nO5. \n\nProbing questions to spot real opportunities:\n→ What trends are working in our favour?\n→ What gaps exist in the market right now?\n→ What changes (tech, regulation, culture) could we ride?\n→ What are our competitors failing to do?\n\n━━ THREATS (External — What Could Hurt Us) ━━\nT1. \nT2. \nT3. \nT4. \nT5. \n\nProbing questions to identify real threats:\n→ What are our competitors doing better?\n→ What external changes could undermine us?\n→ What customer behaviours are shifting away from us?\n→ What regulations or market forces could block us?\n\n━━ STRATEGIC ACTIONS (The SO-ST-WO-WT Matrix) ━━\n\nSO Strategies — Use Strengths to seize Opportunities:\n→ \n→ \n\nST Strategies — Use Strengths to neutralise Threats:\n→ \n→ \n\nWO Strategies — Overcome Weaknesses by exploiting Opportunities:\n→ \n→ \n\nWT Strategies — Minimise Weaknesses to avoid Threats:\n→ \n→ \n\n━━ TOP 3 ACTIONS FROM THIS SWOT ━━\n1. \n2. \n3. `,
+      status: 'draft',
+    },
+  },
+  {
+    id: 'scratch',
+    label: 'From Scratch',
+    emoji: '✏️',
+    description: 'Blank canvas — your rules, your structure',
+    color: 'gray',
+    fill: {
+      title: '',
+      vision: '',
+      goals: '',
+      status: 'draft',
+    },
+  },
+]
+
+const TEMPLATE_COLORS = {
+  purple: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20', hover: 'hover:bg-purple-500/20 hover:border-purple-500/40' },
+  amber: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20', hover: 'hover:bg-amber-500/20 hover:border-amber-500/40' },
+  gray: { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20', hover: 'hover:bg-gray-500/20 hover:border-gray-500/40' },
+  forge: { bg: 'bg-forge-500/10', text: 'text-forge-400', border: 'border-forge-500/20', hover: 'hover:bg-forge-500/20 hover:border-forge-500/40' },
+  news: { bg: 'bg-news-500/10', text: 'text-news-400', border: 'border-news-500/20', hover: 'hover:bg-news-500/20 hover:border-news-500/40' },
+}
 
 const PLAN_STATUSES = [
   { key: 'draft', label: 'Draft', color: 'gray' },
@@ -20,15 +124,28 @@ export default function PlanningPage() {
   const [plans, setPlans] = useState([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const [newPlan, setNewPlan] = useState({ title: '', vision: '', goals: '', status: 'draft' })
 
   const fetchPlans = useCallback(async () => {
-    const { data } = await supabase
-      .from('plans')
-      .select('*')
-      .order('created_at', { ascending: false })
-    setPlans(data || [])
+    // Always load local first for instant render
+    const local = lsLoad()
+    if (local.length > 0) {
+      setPlans(local)
+      setLoading(false)
+    }
+    // Then try to sync from Supabase
+    try {
+      const { data, error } = await supabase
+        .from('plans')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (!error && data && data.length > 0) {
+        setPlans(data)
+        lsSave(data)
+      }
+    } catch {}
     setLoading(false)
   }, [])
 
@@ -40,33 +157,63 @@ export default function PlanningPage() {
     e.preventDefault()
     if (!newPlan.title.trim()) return
 
-    const { data, error } = await supabase
-      .from('plans')
-      .insert({
-        title: newPlan.title.trim(),
-        vision: newPlan.vision.trim(),
-        goals: newPlan.goals.trim(),
-        status: newPlan.status,
-        user_id: user.id,
-      })
-      .select()
-      .single()
-
-    if (!error && data) {
-      setPlans(prev => [data, ...prev])
-      setNewPlan({ title: '', vision: '', goals: '', status: 'draft' })
-      setShowNew(false)
+    // Create locally first — instant feedback, always works
+    const localPlan = {
+      id: crypto.randomUUID(),
+      title: newPlan.title.trim(),
+      vision: newPlan.vision.trim(),
+      goals: newPlan.goals.trim(),
+      status: newPlan.status,
+      user_id: user?.id || 'local',
+      created_at: new Date().toISOString(),
     }
+    const updated = [localPlan, ...plans]
+    setPlans(updated)
+    lsSave(updated)
+    setNewPlan({ title: '', vision: '', goals: '', status: 'draft' })
+    setShowNew(false)
+    setShowTemplates(false)
+
+    // Then sync to Supabase in background
+    try {
+      const { data } = await supabase
+        .from('plans')
+        .insert({
+          title: localPlan.title,
+          vision: localPlan.vision,
+          goals: localPlan.goals,
+          status: localPlan.status,
+          user_id: user?.id,
+        })
+        .select()
+        .single()
+      // Replace local ID with Supabase ID
+      if (data) {
+        setPlans(prev => {
+          const next = prev.map(p => p.id === localPlan.id ? data : p)
+          lsSave(next)
+          return next
+        })
+      }
+    } catch {}
   }
 
   async function updateStatus(id, status) {
-    await supabase.from('plans').update({ status }).eq('id', id)
-    setPlans(prev => prev.map(p => p.id === id ? { ...p, status } : p))
+    setPlans(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, status } : p)
+      lsSave(next)
+      return next
+    })
+    try { await supabase.from('plans').update({ status }).eq('id', id) } catch {}
   }
 
   async function deletePlan(id) {
-    await supabase.from('plans').delete().eq('id', id)
-    setPlans(prev => prev.filter(p => p.id !== id))
+    setPlans(prev => {
+      const next = prev.filter(p => p.id !== id)
+      lsSave(next)
+      return next
+    })
+    try { await supabase.from('plans').delete().eq('id', id) } catch {}
   }
 
   const grouped = {
@@ -88,11 +235,11 @@ export default function PlanningPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-100">Planning</h1>
-              <p className="text-sm text-gray-500">Vision docs, goals, and strategic plans</p>
+              <p className="text-sm text-gray-500">How to achieve your vision</p>
             </div>
           </div>
           <button
-            onClick={() => setShowNew(!showNew)}
+            onClick={() => { setShowTemplates(true); setShowNew(false) }}
             className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-xl transition-all duration-200 cursor-pointer active:scale-[0.97] flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -102,10 +249,56 @@ export default function PlanningPage() {
           </button>
         </div>
 
+        {/* Template picker */}
+        {showTemplates && !showNew && (
+          <div className="card p-6 mb-8 animate-slide-up">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-gray-100">Choose a template</h3>
+              <button onClick={() => setShowTemplates(false)} className="text-gray-500 hover:text-gray-300 transition-colors cursor-pointer">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {TEMPLATES.map(t => {
+                const c = TEMPLATE_COLORS[t.color]
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setNewPlan({ ...t.fill })
+                      setShowTemplates(false)
+                      setShowNew(true)
+                    }}
+                    className={`flex flex-col items-start gap-2 p-4 rounded-xl border ${c.bg} ${c.border} ${c.hover} transition-all duration-200 cursor-pointer text-left group`}
+                  >
+                    <span className="text-2xl">{t.emoji}</span>
+                    <div>
+                      <p className={`text-sm font-semibold ${c.text}`}>{t.label}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{t.description}</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* New plan form */}
         {showNew && (
           <div className="card p-6 mb-8 animate-slide-up">
-            <h3 className="text-lg font-bold text-gray-100 mb-4">Create a new plan</h3>
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={() => { setShowNew(false); setShowTemplates(true) }}
+                className="text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h3 className="text-lg font-bold text-gray-100">Create a new plan</h3>
+            </div>
             <form onSubmit={createPlan} className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5 font-medium">Title</label>
@@ -120,22 +313,20 @@ export default function PlanningPage() {
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5 font-medium">Vision</label>
-                <textarea
+                <AutoTextarea
                   value={newPlan.vision}
                   onChange={e => setNewPlan(p => ({ ...p, vision: e.target.value }))}
                   placeholder="What does success look like? Describe the end state..."
-                  rows={3}
-                  className="w-full px-4 py-2.5 bg-gray-800/50 border border-gray-700/50 rounded-xl text-gray-100 text-sm focus:outline-none focus:border-amber-500/50 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.1)] transition-all duration-200 resize-none"
+                  className="w-full px-4 py-2.5 bg-gray-800/50 border border-gray-700/50 rounded-xl text-gray-100 text-sm focus:outline-none focus:border-amber-500/50 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.1)] transition-all duration-200"
                 />
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1.5 font-medium">Key Goals</label>
-                <textarea
+                <AutoTextarea
                   value={newPlan.goals}
                   onChange={e => setNewPlan(p => ({ ...p, goals: e.target.value }))}
                   placeholder="One goal per line..."
-                  rows={3}
-                  className="w-full px-4 py-2.5 bg-gray-800/50 border border-gray-700/50 rounded-xl text-gray-100 text-sm focus:outline-none focus:border-amber-500/50 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.1)] transition-all duration-200 resize-none"
+                  className="w-full px-4 py-2.5 bg-gray-800/50 border border-gray-700/50 rounded-xl text-gray-100 text-sm focus:outline-none focus:border-amber-500/50 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.1)] transition-all duration-200"
                 />
               </div>
               <div className="flex items-center gap-3">
@@ -156,7 +347,7 @@ export default function PlanningPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowNew(false)}
+                  onClick={() => { setShowNew(false); setShowTemplates(false) }}
                   className="px-4 py-2.5 text-gray-400 hover:text-gray-200 text-sm transition-colors cursor-pointer"
                 >
                   Cancel

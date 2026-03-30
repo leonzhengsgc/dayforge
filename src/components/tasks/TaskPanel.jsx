@@ -14,7 +14,7 @@ export default function TaskPanel({ scope }) {
   const allDone = totalCount > 0 && completedCount === totalCount
 
   return (
-    <div className="card p-5 flex flex-col animate-slide-up">
+    <div className="card p-5 animate-slide-up">
       <div className="flex items-baseline justify-between mb-0.5">
         <h2 className="text-xl font-bold text-gray-100">{label}</h2>
         {totalCount > 0 && (
@@ -47,7 +47,7 @@ export default function TaskPanel({ scope }) {
       )}
 
       <AddTaskForm onAdd={addTask} />
-      <div className="mt-4 flex-1 overflow-y-auto max-h-80">
+      <div className="mt-4">
         {loading ? (
           <div className="space-y-2 py-2">
             <div className="h-10 bg-gray-800/40 rounded-lg animate-shimmer" />

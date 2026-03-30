@@ -2,30 +2,42 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { getToday, getTomorrow } from '../lib/dates'
 
+function lsKey(scope) { return `dayforge_tasks_${scope}` }
+function lsLoad(scope) { try { return JSON.parse(localStorage.getItem(lsKey(scope)) || '[]') } catch { return [] } }
+function lsSave(scope, tasks) { try { localStorage.setItem(lsKey(scope), JSON.stringify(tasks)) } catch {} }
+
 export function useTasks(scope) {
-  const [tasks, setTasks] = useState([])
+  const [tasks, setTasks] = useState(() => lsLoad(scope))
   const [loading, setLoading] = useState(true)
 
   const fetchTasks = useCallback(async () => {
-    const today = getToday()
-    const tomorrow = getTomorrow()
-
-    let query = supabase.from('tasks').select('*')
-
-    if (scope === 'today') {
-      query = query.or(`and(completed.eq.false,target_date.lte.${today}),and(completed.eq.true,target_date.eq.${today})`)
-    } else {
-      query = query.eq('target_date', tomorrow)
+    // Show local data immediately
+    const local = lsLoad(scope)
+    if (local.length > 0) {
+      setTasks(local)
     }
 
-    query = query.order('completed', { ascending: true }).order('created_at', { ascending: true })
+    // Try to sync from Supabase
+    try {
+      const today = getToday()
+      const tomorrow = getTomorrow()
+      let query = supabase.from('tasks').select('*')
 
-    const { data, error } = await query
-    if (error) {
-      console.error('Error fetching tasks:', error)
-    } else {
-      setTasks(data || [])
-    }
+      if (scope === 'today') {
+        query = query.or(`and(completed.eq.false,target_date.lte.${today}),and(completed.eq.true,target_date.eq.${today})`)
+      } else {
+        query = query.eq('target_date', tomorrow)
+      }
+
+      query = query.order('completed', { ascending: true }).order('created_at', { ascending: true })
+      const { data, error } = await query
+
+      if (!error && data && data.length > 0) {
+        setTasks(data)
+        lsSave(scope, data)
+      }
+    } catch {}
+
     setLoading(false)
   }, [scope])
 
@@ -35,21 +47,42 @@ export function useTasks(scope) {
 
   async function addTask(title) {
     const targetDate = scope === 'today' ? getToday() : getTomorrow()
-    const { data: { user } } = await supabase.auth.getUser()
 
-    const newTask = {
+    // Create locally first — always works
+    const localTask = {
+      id: crypto.randomUUID(),
       title,
       target_date: targetDate,
-      user_id: user.id,
+      user_id: 'local',
       completed: false,
+      created_at: new Date().toISOString(),
     }
 
-    const { data, error } = await supabase.from('tasks').insert(newTask).select().single()
-    if (error) {
-      console.error('Error adding task:', error)
-      return
-    }
-    setTasks(prev => [...prev, data])
+    setTasks(prev => {
+      const next = [...prev, localTask]
+      lsSave(scope, next)
+      return next
+    })
+
+    // Sync to Supabase in background
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data } = await supabase
+        .from('tasks')
+        .insert({ title, target_date: targetDate, user_id: user.id, completed: false })
+        .select()
+        .single()
+
+      if (data) {
+        setTasks(prev => {
+          const next = prev.map(t => t.id === localTask.id ? data : t)
+          lsSave(scope, next)
+          return next
+        })
+      }
+    } catch {}
   }
 
   async function toggleTask(id, currentCompleted) {
@@ -58,28 +91,27 @@ export function useTasks(scope) {
       completed_at: !currentCompleted ? new Date().toISOString() : null,
     }
 
-    const { error } = await supabase.from('tasks').update(updates).eq('id', id)
-    if (error) {
-      console.error('Error toggling task:', error)
-      return
-    }
-
-    setTasks(prev =>
-      prev.map(t => t.id === id ? { ...t, ...updates } : t)
+    setTasks(prev => {
+      const next = prev
+        .map(t => t.id === id ? { ...t, ...updates } : t)
         .sort((a, b) => {
           if (a.completed !== b.completed) return a.completed ? 1 : -1
           return new Date(a.created_at) - new Date(b.created_at)
         })
-    )
+      lsSave(scope, next)
+      return next
+    })
+
+    try { await supabase.from('tasks').update(updates).eq('id', id) } catch {}
   }
 
   async function deleteTask(id) {
-    const { error } = await supabase.from('tasks').delete().eq('id', id)
-    if (error) {
-      console.error('Error deleting task:', error)
-      return
-    }
-    setTasks(prev => prev.filter(t => t.id !== id))
+    setTasks(prev => {
+      const next = prev.filter(t => t.id !== id)
+      lsSave(scope, next)
+      return next
+    })
+    try { await supabase.from('tasks').delete().eq('id', id) } catch {}
   }
 
   return { tasks, loading, addTask, toggleTask, deleteTask, refetch: fetchTasks }

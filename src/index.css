@@ -165,14 +165,7 @@ body {
   color: #f0fdf4;
 }
 
-/* === News grid responsive override === */
-@media (min-width: 1024px) {
-  .news-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-@media (min-width: 640px) and (max-width: 1023px) {
-  .news-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+/* === News grid — auto-fill columns, min 260px each === */
+.news-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 }

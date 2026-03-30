@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 
 export default function AuthForm() {
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, enterDemo } = useAuth()
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -89,6 +89,24 @@ export default function AuthForm() {
           {isSignUp ? 'Sign In' : 'Sign Up'}
         </button>
       </p>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-700/50" />
+        </div>
+        <div className="relative flex justify-center text-xs text-gray-600">
+          <span className="px-3 bg-gray-900/80">or</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={enterDemo}
+        className="w-full py-2.5 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700/50 hover:border-gray-600/60 text-gray-300 hover:text-gray-100 font-medium rounded-xl transition-all duration-200 cursor-pointer text-sm flex items-center justify-center gap-2"
+      >
+        <span>⚡</span>
+        Try Demo — No account needed
+      </button>
     </form>
   )
 }
