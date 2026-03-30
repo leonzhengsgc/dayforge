@@ -15,9 +15,9 @@ export default function NewsModal({ article, tag, emoji, onClose }) {
 
   if (!article) return null
 
-  const { title, description, image_url, source_name, link, pubDate } = article
-  const formattedDate = pubDate
-    ? new Date(pubDate).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const { title, description, image_url, source_name, link, date } = article
+  const formattedDate = date
+    ? new Date(date).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     : ''
 
   return (

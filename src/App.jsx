@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import NewsPage from './pages/NewsPage'
 import AssistantPage from './pages/AssistantPage'
+import PlanningPage from './pages/PlanningPage'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/planning" element={<PlanningPage />} />
             <Route path="/news" element={<NewsPage />} />
             <Route path="/assistant" element={<AssistantPage />} />
           </Route>
