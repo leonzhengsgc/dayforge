@@ -41,23 +41,27 @@ export default function MonthlyCalendar() {
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-5">
         <button
           onClick={prevMonth}
-          className="p-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+          className="p-2 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-gray-800/60 transition-all duration-200 cursor-pointer active:scale-95"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <div className="text-center">
-          <h2 className="text-lg font-semibold text-gray-100">{monthName}</h2>
-          <ProductivityBadge percentage={monthProductivity} loading={loading} />
+        <div className="flex items-center gap-4">
+          <div className="text-center">
+            <h2 className="text-lg font-bold text-gray-100">{monthName}</h2>
+          </div>
+          <div className="relative">
+            <ProductivityBadge percentage={monthProductivity} loading={loading} />
+          </div>
         </div>
         <button
           onClick={nextMonth}
-          className="p-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+          className="p-2 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-gray-800/60 transition-all duration-200 cursor-pointer active:scale-95"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -65,20 +69,22 @@ export default function MonthlyCalendar() {
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 mb-1">
+      <div className="grid grid-cols-7 gap-1.5 mb-1.5">
         {WEEKDAYS.map(day => (
-          <div key={day} className="text-center text-xs text-gray-500 font-medium py-1">
+          <div key={day} className="text-center text-[11px] uppercase tracking-wider text-gray-600 font-semibold py-1">
             {day}
           </div>
         ))}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-6 h-6 border-2 border-forge-500 border-t-transparent rounded-full animate-spin" />
+        <div className="grid grid-cols-7 gap-1.5">
+          {Array.from({ length: 35 }, (_, i) => (
+            <div key={i} className="aspect-square rounded-lg bg-gray-800/30 animate-shimmer" />
+          ))}
         </div>
       ) : (
-        <div className="grid grid-cols-7 gap-1">
+        <div key={`${year}-${month}`} className="grid grid-cols-7 gap-1.5 animate-fade-in">
           {Array.from({ length: firstDay }, (_, i) => (
             <div key={`empty-${i}`} />
           ))}

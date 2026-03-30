@@ -3,6 +3,8 @@ import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import NewsPage from './pages/NewsPage'
+import AssistantPage from './pages/AssistantPage'
 
 export default function App() {
   return (
@@ -12,6 +14,8 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/assistant" element={<AssistantPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

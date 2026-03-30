@@ -12,20 +12,19 @@ export default function AddTaskForm({ onAdd }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
+    <form onSubmit={handleSubmit} className="relative">
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+      </div>
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Add a task..."
-        className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100 text-sm focus:outline-none focus:border-forge-500 focus:ring-1 focus:ring-forge-500 transition-colors placeholder-gray-500"
+        placeholder="What needs to be done?"
+        className="w-full pl-9 pr-4 py-2.5 bg-gray-800/30 border border-gray-700/40 rounded-xl text-gray-100 text-sm placeholder-gray-600 focus:bg-gray-800/50 focus:border-forge-500/50 focus:outline-none focus:shadow-[0_0_0_3px_rgba(34,197,94,0.1)] transition-all duration-200"
       />
-      <button
-        type="submit"
-        className="px-4 py-2 bg-forge-600 hover:bg-forge-700 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
-      >
-        Add
-      </button>
     </form>
   )
 }
