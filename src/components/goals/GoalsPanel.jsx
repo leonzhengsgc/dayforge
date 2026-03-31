@@ -1,41 +1,101 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '../../lib/supabase'
 
 const LS_KEY = 'dayforge_goals'
-function load() { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] } }
-function save(goals) { try { localStorage.setItem(LS_KEY, JSON.stringify(goals)) } catch {} }
+function lsLoad() { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] } }
+function lsSave(goals) { try { localStorage.setItem(LS_KEY, JSON.stringify(goals)) } catch {} }
 
 export default function GoalsPanel() {
-  const [goals, setGoals] = useState(load)
+  const [goals, setGoals] = useState(lsLoad)
   const [input, setInput] = useState('')
   const [adding, setAdding] = useState(false)
 
-  function persist(next) {
-    setGoals(next)
-    save(next)
-  }
+  const fetchGoals = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('goals')
+        .select('*')
+        .order('created_at', { ascending: true })
+      if (!error && data && data.length > 0) {
+        const mapped = data.map(g => ({
+          id: g.id,
+          text: g.text,
+          progress: g.progress,
+          done: g.done,
+          created: new Date(g.created_at).getTime(),
+        }))
+        setGoals(mapped)
+        lsSave(mapped)
+      }
+    } catch {}
+  }, [])
 
-  function addGoal(e) {
+  useEffect(() => {
+    fetchGoals()
+  }, [fetchGoals])
+
+  async function addGoal(e) {
     e.preventDefault()
     const text = input.trim()
     if (!text) return
-    persist([
-      ...goals,
-      { id: crypto.randomUUID(), text, progress: 0, done: false, created: Date.now() },
-    ])
+
+    const localGoal = { id: crypto.randomUUID(), text, progress: 0, done: false, created: Date.now() }
+    setGoals(prev => {
+      const next = [...prev, localGoal]
+      lsSave(next)
+      return next
+    })
     setInput('')
     setAdding(false)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data } = await supabase
+        .from('goals')
+        .insert({ text, progress: 0, done: false, user_id: user.id })
+        .select()
+        .single()
+      if (data) {
+        const remote = { id: data.id, text: data.text, progress: data.progress, done: data.done, created: new Date(data.created_at).getTime() }
+        setGoals(prev => {
+          const next = prev.map(g => g.id === localGoal.id ? remote : g)
+          lsSave(next)
+          return next
+        })
+      }
+    } catch {}
   }
 
   function setProgress(id, progress) {
-    persist(goals.map(g => g.id === id ? { ...g, progress, done: progress === 100 } : g))
+    setGoals(prev => {
+      const next = prev.map(g => g.id === id ? { ...g, progress, done: progress === 100 } : g)
+      lsSave(next)
+      return next
+    })
+    supabase.from('goals').update({ progress, done: progress === 100 }).eq('id', id).catch(() => {})
   }
 
   function toggleDone(id) {
-    persist(goals.map(g => g.id === id ? { ...g, done: !g.done, progress: !g.done ? 100 : g.progress } : g))
+    let updates
+    setGoals(prev => {
+      const goal = prev.find(g => g.id === id)
+      if (!goal) return prev
+      updates = { done: !goal.done, progress: !goal.done ? 100 : goal.progress }
+      const next = prev.map(g => g.id === id ? { ...g, ...updates } : g)
+      lsSave(next)
+      return next
+    })
+    if (updates) supabase.from('goals').update(updates).eq('id', id).catch(() => {})
   }
 
   function deleteGoal(id) {
-    persist(goals.filter(g => g.id !== id))
+    setGoals(prev => {
+      const next = prev.filter(g => g.id !== id)
+      lsSave(next)
+      return next
+    })
+    supabase.from('goals').delete().eq('id', id).catch(() => {})
   }
 
   const active = goals.filter(g => !g.done)

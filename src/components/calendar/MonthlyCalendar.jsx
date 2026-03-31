@@ -6,7 +6,7 @@ import ProductivityBadge from './ProductivityBadge'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-export default function MonthlyCalendar() {
+export default function MonthlyCalendar({ onDayClick }) {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())
@@ -101,6 +101,8 @@ export default function MonthlyCalendar() {
                 stat={days[dateStr]}
                 isToday={isToday}
                 isFuture={isFuture}
+                dateStr={dateStr}
+                onDayClick={onDayClick}
               />
             )
           })}

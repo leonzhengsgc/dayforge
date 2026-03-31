@@ -40,3 +40,7 @@ export function getDaysInMonth(year, month) {
 export function getFirstDayOfWeek(year, month) {
   return new Date(year, month, 1).getDay()
 }
+
+export function isDateBefore(a, b) {
+  return a < b
+}

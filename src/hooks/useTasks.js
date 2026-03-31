@@ -2,17 +2,43 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { getToday, getTomorrow } from '../lib/dates'
 
-function lsKey(scope) { return `dayforge_tasks_${scope}` }
-function lsLoad(scope) { try { return JSON.parse(localStorage.getItem(lsKey(scope)) || '[]') } catch { return [] } }
-function lsSave(scope, tasks) { try { localStorage.setItem(lsKey(scope), JSON.stringify(tasks)) } catch {} }
+function lsKey(dateStr) { return `dayforge_tasks_${dateStr}` }
+function lsLoad(dateStr) { try { return JSON.parse(localStorage.getItem(lsKey(dateStr)) || '[]') } catch { return [] } }
+function lsSave(dateStr, tasks) { try { localStorage.setItem(lsKey(dateStr), JSON.stringify(tasks)) } catch {} }
+
+function pruneOldTaskCache() {
+  try {
+    const now = new Date()
+    const cutoff = new Date(now)
+    cutoff.setDate(cutoff.getDate() - 7)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith('dayforge_tasks_') && /\d{4}-\d{2}-\d{2}$/.test(key)) {
+        const dateStr = key.slice(-10)
+        if (dateStr < cutoffStr) localStorage.removeItem(key)
+      }
+    }
+    // Clean up old non-date-stamped keys
+    localStorage.removeItem('dayforge_tasks_today')
+    localStorage.removeItem('dayforge_tasks_tomorrow')
+  } catch {}
+}
+
+let _pruned = false
 
 export function useTasks(scope) {
-  const [tasks, setTasks] = useState(() => lsLoad(scope))
+  const dateStr = scope === 'today' ? getToday() : getTomorrow()
+  const [tasks, setTasks] = useState(() => lsLoad(dateStr))
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!_pruned) { _pruned = true; pruneOldTaskCache() }
+  }, [])
 
   const fetchTasks = useCallback(async () => {
     // Show local data immediately
-    const local = lsLoad(scope)
+    const local = lsLoad(dateStr)
     if (local.length > 0) {
       setTasks(local)
     }
@@ -34,19 +60,19 @@ export function useTasks(scope) {
 
       if (!error && data && data.length > 0) {
         setTasks(data)
-        lsSave(scope, data)
+        lsSave(dateStr, data)
       }
     } catch {}
 
     setLoading(false)
-  }, [scope])
+  }, [dateStr])
 
   useEffect(() => {
     fetchTasks()
   }, [fetchTasks])
 
   async function addTask(title) {
-    const targetDate = scope === 'today' ? getToday() : getTomorrow()
+    const targetDate = dateStr
 
     // Create locally first — always works
     const localTask = {
@@ -60,7 +86,7 @@ export function useTasks(scope) {
 
     setTasks(prev => {
       const next = [...prev, localTask]
-      lsSave(scope, next)
+      lsSave(dateStr, next)
       return next
     })
 
@@ -78,7 +104,7 @@ export function useTasks(scope) {
       if (data) {
         setTasks(prev => {
           const next = prev.map(t => t.id === localTask.id ? data : t)
-          lsSave(scope, next)
+          lsSave(dateStr, next)
           return next
         })
       }
@@ -98,7 +124,7 @@ export function useTasks(scope) {
           if (a.completed !== b.completed) return a.completed ? 1 : -1
           return new Date(a.created_at) - new Date(b.created_at)
         })
-      lsSave(scope, next)
+      lsSave(dateStr, next)
       return next
     })
 
@@ -108,7 +134,7 @@ export function useTasks(scope) {
   async function deleteTask(id) {
     setTasks(prev => {
       const next = prev.filter(t => t.id !== id)
-      lsSave(scope, next)
+      lsSave(dateStr, next)
       return next
     })
     try { await supabase.from('tasks').delete().eq('id', id) } catch {}
