@@ -9,6 +9,43 @@ function lsKey() {
 function lsLoad() { try { return JSON.parse(localStorage.getItem(lsKey()) || '[]') } catch { return [] } }
 function lsSave(plans) { try { localStorage.setItem(lsKey(), JSON.stringify(plans)) } catch {} }
 
+// Migrate plans from old unscoped localStorage key into Supabase
+async function migrateLocalPlans(supabase) {
+  try {
+    const uid = getUserId()
+    if (!uid || uid === 'demo-user') return
+
+    const legacyRaw = localStorage.getItem('dayforge_plans')
+    const scopedRaw = localStorage.getItem(lsKey())
+    const legacy = legacyRaw ? JSON.parse(legacyRaw) : []
+    const scoped = scopedRaw ? JSON.parse(scopedRaw) : []
+    const localPlans = [...legacy, ...scoped]
+
+    if (localPlans.length === 0) return
+
+    const { data: remote } = await supabase.from('plans').select('title')
+    const remoteTitles = new Set((remote || []).map(p => p.title))
+
+    const toUpload = localPlans.filter(p => !remoteTitles.has(p.title))
+    if (toUpload.length === 0) return
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const rows = toUpload.map(p => ({
+      title: p.title,
+      vision: p.vision || '',
+      goals: p.goals || '',
+      status: p.status || 'draft',
+      user_id: user.id,
+    }))
+
+    await supabase.from('plans').insert(rows)
+
+    if (legacyRaw) localStorage.removeItem('dayforge_plans')
+  } catch {}
+}
+
 function AutoTextarea({ value, onChange, placeholder, className }) {
   const ref = useRef(null)
   useEffect(() => {
@@ -164,8 +201,9 @@ export default function PlanningPage() {
     return () => { supabase.removeChannel(channel) }
   }, [fetchPlans])
 
+  // On mount: migrate old localStorage plans to Supabase, then fetch
   useEffect(() => {
-    fetchPlans()
+    migrateLocalPlans(supabase).then(() => fetchPlans())
   }, [fetchPlans])
 
   async function createPlan(e) {

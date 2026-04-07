@@ -9,6 +9,46 @@ function lsKey() {
 function lsLoad() { try { return JSON.parse(localStorage.getItem(lsKey()) || '[]') } catch { return [] } }
 function lsSave(goals) { try { localStorage.setItem(lsKey(), JSON.stringify(goals)) } catch {} }
 
+// Migrate goals from old unscoped localStorage key into Supabase
+async function migrateLocalGoals() {
+  try {
+    const uid = getUserId()
+    if (!uid || uid === 'demo-user') return
+
+    // Check the old unscoped key AND the new scoped key for local-only goals
+    const legacyRaw = localStorage.getItem('dayforge_goals')
+    const scopedRaw = localStorage.getItem(lsKey())
+    const legacy = legacyRaw ? JSON.parse(legacyRaw) : []
+    const scoped = scopedRaw ? JSON.parse(scopedRaw) : []
+    const localGoals = [...legacy, ...scoped]
+
+    if (localGoals.length === 0) return
+
+    // Get what's already in Supabase
+    const { data: remote } = await supabase.from('goals').select('text')
+    const remoteTexts = new Set((remote || []).map(g => g.text))
+
+    // Find goals that exist locally but not in Supabase
+    const toUpload = localGoals.filter(g => !remoteTexts.has(g.text))
+    if (toUpload.length === 0) return
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const rows = toUpload.map(g => ({
+      text: g.text,
+      progress: g.progress || 0,
+      done: g.done || false,
+      user_id: user.id,
+    }))
+
+    await supabase.from('goals').insert(rows)
+
+    // Clean up legacy key
+    if (legacyRaw) localStorage.removeItem('dayforge_goals')
+  } catch {}
+}
+
 export default function GoalsPanel() {
   const [goals, setGoals] = useState(lsLoad)
   const [input, setInput] = useState('')
@@ -34,6 +74,11 @@ export default function GoalsPanel() {
     } catch {}
   }, [])
 
+  // On mount: migrate any local-only goals to Supabase, then fetch
+  useEffect(() => {
+    migrateLocalGoals().then(() => fetchGoals())
+  }, [fetchGoals])
+
   // Realtime subscription for cross-device sync
   useEffect(() => {
     const channel = supabase
@@ -44,10 +89,6 @@ export default function GoalsPanel() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [fetchGoals])
-
-  useEffect(() => {
-    fetchGoals()
   }, [fetchGoals])
 
   async function addGoal(e) {

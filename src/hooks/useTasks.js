@@ -29,6 +29,63 @@ function pruneOldTaskCache() {
 }
 
 let _pruned = false
+let _migrated = false
+
+// Migrate tasks from old unscoped localStorage keys into Supabase
+async function migrateLocalTasks() {
+  if (_migrated) return
+  _migrated = true
+
+  try {
+    const uid = getUserId()
+    if (!uid || uid === 'demo-user') return
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Find all old-style unscoped task keys: dayforge_tasks_YYYY-MM-DD (no user ID segment)
+    const legacyKeys = []
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i)
+      if (key && /^dayforge_tasks_\d{4}-\d{2}-\d{2}$/.test(key)) {
+        legacyKeys.push(key)
+      }
+    }
+
+    if (legacyKeys.length === 0) return
+
+    // Get all existing task titles from Supabase to avoid duplicates
+    const { data: remote } = await supabase.from('tasks').select('title, target_date')
+    const remoteSet = new Set((remote || []).map(t => `${t.title}|||${t.target_date}`))
+
+    const toUpload = []
+    for (const key of legacyKeys) {
+      const dateStr = key.slice(-10)
+      try {
+        const tasks = JSON.parse(localStorage.getItem(key) || '[]')
+        for (const t of tasks) {
+          const sig = `${t.title}|||${t.target_date || dateStr}`
+          if (!remoteSet.has(sig)) {
+            toUpload.push({
+              title: t.title,
+              target_date: t.target_date || dateStr,
+              completed: t.completed || false,
+              completed_at: t.completed_at || null,
+              user_id: user.id,
+            })
+            remoteSet.add(sig)
+          }
+        }
+      } catch {}
+      // Remove old key after processing
+      localStorage.removeItem(key)
+    }
+
+    if (toUpload.length > 0) {
+      await supabase.from('tasks').insert(toUpload)
+    }
+  } catch {}
+}
 
 export function useTasks(scope) {
   const dateStr = scope === 'today' ? getToday() : getTomorrow()
@@ -69,6 +126,11 @@ export function useTasks(scope) {
     setLoading(false)
   }, [dateStr, scope])
 
+  // On mount: migrate old localStorage tasks to Supabase, then fetch
+  useEffect(() => {
+    migrateLocalTasks().then(() => fetchTasks())
+  }, [fetchTasks])
+
   // Realtime subscription for cross-device sync
   useEffect(() => {
     const channel = supabase
@@ -81,10 +143,6 @@ export function useTasks(scope) {
     subscriptionRef.current = channel
     return () => { supabase.removeChannel(channel) }
   }, [scope, fetchTasks])
-
-  useEffect(() => {
-    fetchTasks()
-  }, [fetchTasks])
 
   async function addTask(title) {
     const targetDate = dateStr
