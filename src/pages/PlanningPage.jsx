@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-const LS_KEY = 'dayforge_plans'
-function lsLoad() { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] } }
-function lsSave(plans) { try { localStorage.setItem(LS_KEY, JSON.stringify(plans)) } catch {} }
+import { getUserId } from '../lib/userScope'
+
+function lsKey() {
+  const uid = getUserId()
+  return uid ? `dayforge_plans_${uid}` : 'dayforge_plans'
+}
+function lsLoad() { try { return JSON.parse(localStorage.getItem(lsKey()) || '[]') } catch { return [] } }
+function lsSave(plans) { try { localStorage.setItem(lsKey(), JSON.stringify(plans)) } catch {} }
 
 function AutoTextarea({ value, onChange, placeholder, className }) {
   const ref = useRef(null)
@@ -129,25 +134,35 @@ export default function PlanningPage() {
   const [newPlan, setNewPlan] = useState({ title: '', vision: '', goals: '', status: 'draft' })
 
   const fetchPlans = useCallback(async () => {
-    // Always load local first for instant render
     const local = lsLoad()
     if (local.length > 0) {
       setPlans(local)
       setLoading(false)
     }
-    // Then try to sync from Supabase
     try {
       const { data, error } = await supabase
         .from('plans')
         .select('*')
         .order('created_at', { ascending: false })
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         setPlans(data)
         lsSave(data)
       }
     } catch {}
     setLoading(false)
   }, [])
+
+  // Realtime subscription for cross-device sync
+  useEffect(() => {
+    const channel = supabase
+      .channel('plans-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plans' }, () => {
+        fetchPlans()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchPlans])
 
   useEffect(() => {
     fetchPlans()

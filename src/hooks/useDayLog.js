@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { getUserId } from '../lib/userScope'
 
-function lsKey(dateStr) { return `dayforge_tasks_${dateStr}` }
+function lsKey(dateStr) {
+  const uid = getUserId()
+  return uid ? `dayforge_tasks_${uid}_${dateStr}` : `dayforge_tasks_${dateStr}`
+}
 function lsLoad(dateStr) { try { return JSON.parse(localStorage.getItem(lsKey(dateStr)) || '[]') } catch { return [] } }
 function lsSave(dateStr, tasks) { try { localStorage.setItem(lsKey(dateStr), JSON.stringify(tasks)) } catch {} }
 
@@ -14,11 +18,9 @@ export function useDayLog(dateStr) {
 
     setLoading(true)
 
-    // Reset tasks for new date, then show cached data if available
     const local = lsLoad(dateStr)
     setTasks(local)
 
-    // Fetch from Supabase
     try {
       const { data, error } = await supabase
         .from('tasks')
@@ -27,7 +29,7 @@ export function useDayLog(dateStr) {
         .order('completed', { ascending: true })
         .order('created_at', { ascending: true })
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         setTasks(data)
         lsSave(dateStr, data)
       }

@@ -1,8 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { getToday, getTomorrow } from '../lib/dates'
+import { getUserId } from '../lib/userScope'
 
-function lsKey(dateStr) { return `dayforge_tasks_${dateStr}` }
+function lsKey(dateStr) {
+  const uid = getUserId()
+  return uid ? `dayforge_tasks_${uid}_${dateStr}` : `dayforge_tasks_${dateStr}`
+}
 function lsLoad(dateStr) { try { return JSON.parse(localStorage.getItem(lsKey(dateStr)) || '[]') } catch { return [] } }
 function lsSave(dateStr, tasks) { try { localStorage.setItem(lsKey(dateStr), JSON.stringify(tasks)) } catch {} }
 
@@ -19,7 +23,6 @@ function pruneOldTaskCache() {
         if (dateStr < cutoffStr) localStorage.removeItem(key)
       }
     }
-    // Clean up old non-date-stamped keys
     localStorage.removeItem('dayforge_tasks_today')
     localStorage.removeItem('dayforge_tasks_tomorrow')
   } catch {}
@@ -31,19 +34,18 @@ export function useTasks(scope) {
   const dateStr = scope === 'today' ? getToday() : getTomorrow()
   const [tasks, setTasks] = useState(() => lsLoad(dateStr))
   const [loading, setLoading] = useState(true)
+  const subscriptionRef = useRef(null)
 
   useEffect(() => {
     if (!_pruned) { _pruned = true; pruneOldTaskCache() }
   }, [])
 
   const fetchTasks = useCallback(async () => {
-    // Show local data immediately
     const local = lsLoad(dateStr)
     if (local.length > 0) {
       setTasks(local)
     }
 
-    // Try to sync from Supabase
     try {
       const today = getToday()
       const tomorrow = getTomorrow()
@@ -58,14 +60,27 @@ export function useTasks(scope) {
       query = query.order('completed', { ascending: true }).order('created_at', { ascending: true })
       const { data, error } = await query
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         setTasks(data)
         lsSave(dateStr, data)
       }
     } catch {}
 
     setLoading(false)
-  }, [dateStr])
+  }, [dateStr, scope])
+
+  // Realtime subscription for cross-device sync
+  useEffect(() => {
+    const channel = supabase
+      .channel(`tasks-${scope}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+        fetchTasks()
+      })
+      .subscribe()
+
+    subscriptionRef.current = channel
+    return () => { supabase.removeChannel(channel) }
+  }, [scope, fetchTasks])
 
   useEffect(() => {
     fetchTasks()
@@ -74,7 +89,6 @@ export function useTasks(scope) {
   async function addTask(title) {
     const targetDate = dateStr
 
-    // Create locally first — always works
     const localTask = {
       id: crypto.randomUUID(),
       title,
@@ -90,7 +104,6 @@ export function useTasks(scope) {
       return next
     })
 
-    // Sync to Supabase in background
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return

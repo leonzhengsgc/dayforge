@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { getUserId } from '../../lib/userScope'
 
-const LS_KEY = 'dayforge_goals'
-function lsLoad() { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] } }
-function lsSave(goals) { try { localStorage.setItem(LS_KEY, JSON.stringify(goals)) } catch {} }
+function lsKey() {
+  const uid = getUserId()
+  return uid ? `dayforge_goals_${uid}` : 'dayforge_goals'
+}
+function lsLoad() { try { return JSON.parse(localStorage.getItem(lsKey()) || '[]') } catch { return [] } }
+function lsSave(goals) { try { localStorage.setItem(lsKey(), JSON.stringify(goals)) } catch {} }
 
 export default function GoalsPanel() {
   const [goals, setGoals] = useState(lsLoad)
@@ -16,7 +20,7 @@ export default function GoalsPanel() {
         .from('goals')
         .select('*')
         .order('created_at', { ascending: true })
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         const mapped = data.map(g => ({
           id: g.id,
           text: g.text,
@@ -29,6 +33,18 @@ export default function GoalsPanel() {
       }
     } catch {}
   }, [])
+
+  // Realtime subscription for cross-device sync
+  useEffect(() => {
+    const channel = supabase
+      .channel('goals-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' }, () => {
+        fetchGoals()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchGoals])
 
   useEffect(() => {
     fetchGoals()

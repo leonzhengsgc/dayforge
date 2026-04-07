@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { setUserId, clearUserId } from '../lib/userScope'
 
 const AuthContext = createContext({})
 
@@ -12,18 +13,27 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     // Check demo mode first
     if (localStorage.getItem('dayforge_demo') === 'true') {
+      setUserId('demo-user')
       setUser(DEMO_USER)
       setLoading(false)
       return
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
+      const u = session?.user ?? null
+      if (u) setUserId(u.id)
+      setUser(u)
       setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+      const u = session?.user ?? null
+      if (u) {
+        setUserId(u.id)
+      } else {
+        clearUserId()
+      }
+      setUser(u)
     })
 
     return () => subscription.unsubscribe()
@@ -42,15 +52,18 @@ export function AuthProvider({ children }) {
   async function signOut() {
     if (localStorage.getItem('dayforge_demo') === 'true') {
       localStorage.removeItem('dayforge_demo')
+      clearUserId()
       setUser(null)
       return
     }
+    clearUserId()
     const { error } = await supabase.auth.signOut()
     if (error) throw error
   }
 
   function enterDemo() {
     localStorage.setItem('dayforge_demo', 'true')
+    setUserId('demo-user')
     setUser(DEMO_USER)
   }
 
