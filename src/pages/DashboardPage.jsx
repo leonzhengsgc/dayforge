@@ -3,6 +3,7 @@ import AppShell from '../components/layout/AppShell'
 import TaskPanel from '../components/tasks/TaskPanel'
 import MonthlyCalendar from '../components/calendar/MonthlyCalendar'
 import GoalsPanel from '../components/goals/GoalsPanel'
+import LearningGoalsPanel from '../components/goals/LearningGoalsPanel'
 import DailyLogModal from '../components/log/DailyLogModal'
 
 export default function DashboardPage() {
@@ -16,6 +17,7 @@ export default function DashboardPage() {
           <TaskPanel scope="tomorrow" />
         </div>
         <GoalsPanel />
+        <LearningGoalsPanel />
         <div className="animate-slide-up" style={{ animationDelay: '150ms' }}>
           <MonthlyCalendar onDayClick={setLogDate} />
         </div>
