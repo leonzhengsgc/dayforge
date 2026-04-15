@@ -1,3 +1,9 @@
+const RECURRENCE_LABELS = {
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+}
+
 export default function TaskItem({ task, onToggle, onDelete }) {
   return (
     <div
@@ -28,6 +34,17 @@ export default function TaskItem({ task, onToggle, onDelete }) {
       >
         {task.title}
       </span>
+      {task.recurrence && (
+        <span
+          title={`Repeats ${RECURRENCE_LABELS[task.recurrence]}`}
+          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-forge-400/90 bg-forge-500/10 border border-forge-500/20 rounded-md flex-shrink-0"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+          </svg>
+          {RECURRENCE_LABELS[task.recurrence]}
+        </span>
+      )}
       <button
         onClick={() => onDelete(task.id)}
         className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400/80 transition-all duration-200 cursor-pointer p-1 rounded-md hover:bg-red-400/10"

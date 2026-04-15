@@ -44,3 +44,27 @@ export function getFirstDayOfWeek(year, month) {
 export function isDateBefore(a, b) {
   return a < b
 }
+
+export function addDays(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() + n)
+  return formatDateISO(date)
+}
+
+export function addMonths(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setMonth(date.getMonth() + n)
+  return formatDateISO(date)
+}
+
+// Next scheduled date for a recurring task, anchored from today so we
+// never create instances in the past even if the previous one was rolled
+// over for many days.
+export function nextRecurrenceDate(recurrence, from = getToday()) {
+  if (recurrence === 'daily') return addDays(from, 1)
+  if (recurrence === 'weekly') return addDays(from, 7)
+  if (recurrence === 'monthly') return addMonths(from, 1)
+  return null
+}

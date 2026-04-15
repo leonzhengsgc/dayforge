@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { getToday, getTomorrow } from '../lib/dates'
+import { getToday, getTomorrow, nextRecurrenceDate } from '../lib/dates'
 import { getUserId } from '../lib/userScope'
 
 function lsKey(dateStr) {
@@ -152,7 +152,7 @@ export function useTasks(scope) {
     return () => { supabase.removeChannel(channel) }
   }, [scope, fetchTasks])
 
-  async function addTask(title) {
+  async function addTask(title, recurrence = null) {
     const targetDate = dateStr
 
     const localTask = {
@@ -161,6 +161,7 @@ export function useTasks(scope) {
       target_date: targetDate,
       user_id: 'local',
       completed: false,
+      recurrence,
       created_at: new Date().toISOString(),
     }
 
@@ -178,7 +179,7 @@ export function useTasks(scope) {
 
       const { data } = await supabase
         .from('tasks')
-        .insert({ title, target_date: targetDate, user_id: user.id, completed: false })
+        .insert({ title, target_date: targetDate, user_id: user.id, completed: false, recurrence })
         .select()
         .single()
 
@@ -195,6 +196,36 @@ export function useTasks(scope) {
     }
   }
 
+  // Spawn the next instance of a recurring task. Deduped by title +
+  // target_date so rapid toggle-uncheck-toggle doesn't create duplicates.
+  async function spawnNextRecurrence(task) {
+    if (!task?.recurrence) return
+    const nextDate = nextRecurrenceDate(task.recurrence)
+    if (!nextDate) return
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: existing } = await supabase
+        .from('tasks')
+        .select('id')
+        .eq('title', task.title)
+        .eq('target_date', nextDate)
+        .eq('completed', false)
+        .limit(1)
+      if (existing && existing.length > 0) return
+
+      await supabase.from('tasks').insert({
+        title: task.title,
+        target_date: nextDate,
+        user_id: user.id,
+        completed: false,
+        recurrence: task.recurrence,
+      })
+    } catch {}
+  }
+
   async function toggleTask(id, currentCompleted) {
     const today = getToday()
     // When marking complete, re-anchor target_date to today so the monthly
@@ -204,7 +235,9 @@ export function useTasks(scope) {
       ? { completed: true, completed_at: new Date().toISOString(), target_date: today }
       : { completed: false, completed_at: null }
 
+    let toggledTask = null
     setTasks(prev => {
+      toggledTask = prev.find(t => t.id === id) || null
       const next = prev
         .map(t => t.id === id ? { ...t, ...updates } : t)
         .sort((a, b) => {
@@ -216,6 +249,13 @@ export function useTasks(scope) {
     })
 
     try { await supabase.from('tasks').update(updates).eq('id', id) } catch {}
+
+    // If this was a recurring task and we just completed it, create the
+    // next occurrence. If it's not completed by its next date, the existing
+    // rollover behavior will keep it visible on Today's panel.
+    if (!currentCompleted && toggledTask?.recurrence) {
+      await spawnNextRecurrence(toggledTask)
+    }
   }
 
   async function deleteTask(id) {
