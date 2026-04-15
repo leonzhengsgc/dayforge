@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getUserId } from '../../lib/userScope'
 
@@ -15,6 +15,10 @@ export default function LearningGoalsPanel() {
   const [adding, setAdding] = useState(false)
   const [targetDate, setTargetDate] = useState('')
 
+  // In-flight writes so realtime re-fetches don't revert the user's click.
+  const pendingWrites = useRef(new Map())
+  const pendingDeletes = useRef(new Set())
+
   const fetchGoals = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -26,46 +30,22 @@ export default function LearningGoalsPanel() {
         .order('created_at', { ascending: true })
       if (error) return
 
-      const mapped = (data || []).map(g => ({
-        id: g.id,
-        text: g.text,
-        progress: g.progress,
-        done: g.done,
-        target_date: g.target_date || null,
-        created: new Date(g.created_at).getTime(),
-      }))
-
-      if (mapped.length === 0) {
-        const local = lsLoad()
-        if (local.length > 0) {
-          const rows = local.map(g => ({
+      const mapped = (data || [])
+        .filter(g => !pendingDeletes.current.has(g.id))
+        .map(g => {
+          const pending = pendingWrites.current.get(g.id)
+          return {
+            id: g.id,
             text: g.text,
-            progress: g.progress || 0,
-            done: g.done || false,
+            progress: pending ? pending.progress : g.progress,
+            done: pending ? pending.done : g.done,
             target_date: g.target_date || null,
-            user_id: user.id,
-          }))
-          await supabase.from('learning_goals').insert(rows)
-          const { data: refetched } = await supabase
-            .from('learning_goals')
-            .select('*')
-            .order('created_at', { ascending: true })
-          if (refetched && refetched.length > 0) {
-            const reMapped = refetched.map(g => ({
-              id: g.id,
-              text: g.text,
-              progress: g.progress,
-              done: g.done,
-              target_date: g.target_date || null,
-              created: new Date(g.created_at).getTime(),
-            }))
-            setGoals(reMapped)
-            lsSave(reMapped)
+            created: new Date(g.created_at).getTime(),
           }
-          return
-        }
-      }
+        })
 
+      // Supabase is the source of truth. Empty result = no learning goals.
+      // Never re-upload from local cache — that resurrects deleted rows.
       setGoals(mapped)
       lsSave(mapped)
     } catch {}
@@ -121,35 +101,55 @@ export default function LearningGoalsPanel() {
     } catch {}
   }
 
-  function setProgress(id, progress) {
+  async function setProgress(id, progress) {
+    const updates = { progress, done: progress === 100 }
+    pendingWrites.current.set(id, updates)
     setGoals(prev => {
-      const next = prev.map(g => g.id === id ? { ...g, progress, done: progress === 100 } : g)
+      const next = prev.map(g => g.id === id ? { ...g, ...updates } : g)
       lsSave(next)
       return next
     })
-    supabase.from('learning_goals').update({ progress, done: progress === 100 }).eq('id', id).catch(() => {})
+    try {
+      await supabase.from('learning_goals').update(updates).eq('id', id)
+    } catch {}
+    const current = pendingWrites.current.get(id)
+    if (current && current.progress === progress && current.done === updates.done) {
+      pendingWrites.current.delete(id)
+    }
   }
 
-  function toggleDone(id) {
+  async function toggleDone(id) {
     let updates
     setGoals(prev => {
       const goal = prev.find(g => g.id === id)
       if (!goal) return prev
       updates = { done: !goal.done, progress: !goal.done ? 100 : goal.progress }
+      pendingWrites.current.set(id, updates)
       const next = prev.map(g => g.id === id ? { ...g, ...updates } : g)
       lsSave(next)
       return next
     })
-    if (updates) supabase.from('learning_goals').update(updates).eq('id', id).catch(() => {})
+    if (!updates) return
+    try {
+      await supabase.from('learning_goals').update(updates).eq('id', id)
+    } catch {}
+    const current = pendingWrites.current.get(id)
+    if (current && current.done === updates.done && current.progress === updates.progress) {
+      pendingWrites.current.delete(id)
+    }
   }
 
-  function deleteGoal(id) {
+  async function deleteGoal(id) {
+    pendingDeletes.current.add(id)
     setGoals(prev => {
       const next = prev.filter(g => g.id !== id)
       lsSave(next)
       return next
     })
-    supabase.from('learning_goals').delete().eq('id', id).catch(() => {})
+    try {
+      await supabase.from('learning_goals').delete().eq('id', id)
+    } catch {}
+    pendingDeletes.current.delete(id)
   }
 
   const active = goals.filter(g => !g.done)

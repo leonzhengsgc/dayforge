@@ -57,6 +57,12 @@ export default function GoalsPanel() {
   const [adding, setAdding] = useState(false)
   const [targetDate, setTargetDate] = useState('')
 
+  // Track writes that are in flight. Realtime re-fetches would otherwise
+  // overwrite an optimistic toggle/slider/delete with the pre-write server
+  // value, making checkmarks pop back and sliders snap backward.
+  const pendingWrites = useRef(new Map()) // id -> { progress, done }
+  const pendingDeletes = useRef(new Set()) // id
+
   const fetchGoals = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -68,14 +74,19 @@ export default function GoalsPanel() {
         .order('created_at', { ascending: true })
       if (error) return // Don't wipe goals on error
 
-      const mapped = (data || []).map(g => ({
-        id: g.id,
-        text: g.text,
-        progress: g.progress,
-        done: g.done,
-        target_date: g.target_date || null,
-        created: new Date(g.created_at).getTime(),
-      }))
+      const mapped = (data || [])
+        .filter(g => !pendingDeletes.current.has(g.id)) // hide rows we're deleting
+        .map(g => {
+          const pending = pendingWrites.current.get(g.id)
+          return {
+            id: g.id,
+            text: g.text,
+            progress: pending ? pending.progress : g.progress,
+            done: pending ? pending.done : g.done,
+            target_date: g.target_date || null,
+            created: new Date(g.created_at).getTime(),
+          }
+        })
 
       // Supabase is the source of truth. An empty result means the user
       // has no goals — never re-upload from local cache, that undoes deletes.
@@ -136,35 +147,56 @@ export default function GoalsPanel() {
     } catch {}
   }
 
-  function setProgress(id, progress) {
+  async function setProgress(id, progress) {
+    const updates = { progress, done: progress === 100 }
+    pendingWrites.current.set(id, updates)
     setGoals(prev => {
-      const next = prev.map(g => g.id === id ? { ...g, progress, done: progress === 100 } : g)
+      const next = prev.map(g => g.id === id ? { ...g, ...updates } : g)
       lsSave(next)
       return next
     })
-    supabase.from('goals').update({ progress, done: progress === 100 }).eq('id', id).catch(() => {})
+    try {
+      await supabase.from('goals').update(updates).eq('id', id)
+    } catch {}
+    // Only clear the pending record if no newer write has superseded it.
+    const current = pendingWrites.current.get(id)
+    if (current && current.progress === progress && current.done === updates.done) {
+      pendingWrites.current.delete(id)
+    }
   }
 
-  function toggleDone(id) {
+  async function toggleDone(id) {
     let updates
     setGoals(prev => {
       const goal = prev.find(g => g.id === id)
       if (!goal) return prev
       updates = { done: !goal.done, progress: !goal.done ? 100 : goal.progress }
+      pendingWrites.current.set(id, updates)
       const next = prev.map(g => g.id === id ? { ...g, ...updates } : g)
       lsSave(next)
       return next
     })
-    if (updates) supabase.from('goals').update(updates).eq('id', id).catch(() => {})
+    if (!updates) return
+    try {
+      await supabase.from('goals').update(updates).eq('id', id)
+    } catch {}
+    const current = pendingWrites.current.get(id)
+    if (current && current.done === updates.done && current.progress === updates.progress) {
+      pendingWrites.current.delete(id)
+    }
   }
 
-  function deleteGoal(id) {
+  async function deleteGoal(id) {
+    pendingDeletes.current.add(id)
     setGoals(prev => {
       const next = prev.filter(g => g.id !== id)
       lsSave(next)
       return next
     })
-    supabase.from('goals').delete().eq('id', id).catch(() => {})
+    try {
+      await supabase.from('goals').delete().eq('id', id)
+    } catch {}
+    pendingDeletes.current.delete(id)
   }
 
   const active = goals.filter(g => !g.done)
