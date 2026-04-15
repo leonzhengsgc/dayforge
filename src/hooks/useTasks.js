@@ -92,6 +92,7 @@ export function useTasks(scope) {
   const [tasks, setTasks] = useState(() => lsLoad(dateStr))
   const [loading, setLoading] = useState(true)
   const subscriptionRef = useRef(null)
+  const pendingLocalIds = useRef(new Set())
 
   useEffect(() => {
     if (!_pruned) { _pruned = true; pruneOldTaskCache() }
@@ -118,8 +119,15 @@ export function useTasks(scope) {
       const { data, error } = await query
 
       if (!error && data) {
-        setTasks(data)
-        lsSave(dateStr, data)
+        // Deduplicate: keep server versions, remove local optimistic entries that now have server copies
+        const serverIds = new Set(data.map(t => t.id))
+        setTasks(prev => {
+          // Keep any pending local tasks that aren't yet on the server
+          const localOnly = prev.filter(t => pendingLocalIds.current.has(t.id) && !serverIds.has(t.id))
+          const merged = [...data, ...localOnly]
+          lsSave(dateStr, merged)
+          return merged
+        })
       }
     } catch {}
 
@@ -156,6 +164,8 @@ export function useTasks(scope) {
       created_at: new Date().toISOString(),
     }
 
+    pendingLocalIds.current.add(localTask.id)
+
     setTasks(prev => {
       const next = [...prev, localTask]
       lsSave(dateStr, next)
@@ -173,20 +183,26 @@ export function useTasks(scope) {
         .single()
 
       if (data) {
+        pendingLocalIds.current.delete(localTask.id)
         setTasks(prev => {
           const next = prev.map(t => t.id === localTask.id ? data : t)
           lsSave(dateStr, next)
           return next
         })
       }
-    } catch {}
+    } catch {
+      pendingLocalIds.current.delete(localTask.id)
+    }
   }
 
   async function toggleTask(id, currentCompleted) {
-    const updates = {
-      completed: !currentCompleted,
-      completed_at: !currentCompleted ? new Date().toISOString() : null,
-    }
+    const today = getToday()
+    // When marking complete, re-anchor target_date to today so the monthly
+    // calendar attributes the completion to the day it actually happened,
+    // not the day the task was originally scheduled (rolled-over tasks).
+    const updates = !currentCompleted
+      ? { completed: true, completed_at: new Date().toISOString(), target_date: today }
+      : { completed: false, completed_at: null }
 
     setTasks(prev => {
       const next = prev

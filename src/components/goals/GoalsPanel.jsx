@@ -9,43 +9,45 @@ function lsKey() {
 function lsLoad() { try { return JSON.parse(localStorage.getItem(lsKey()) || '[]') } catch { return [] } }
 function lsSave(goals) { try { localStorage.setItem(lsKey(), JSON.stringify(goals)) } catch {} }
 
-// Migrate goals from old unscoped localStorage key into Supabase
+// Migrate goals from old unscoped localStorage key into Supabase.
+// IMPORTANT: only migrate the legacy unscoped key. The scoped key is the
+// live cache and must never be re-uploaded — doing so undoes deletions
+// across devices (cache still has the goal after another device deleted it).
 async function migrateLocalGoals() {
   try {
     const uid = getUserId()
     if (!uid || uid === 'demo-user') return
 
-    // Check the old unscoped key AND the new scoped key for local-only goals
     const legacyRaw = localStorage.getItem('dayforge_goals')
-    const scopedRaw = localStorage.getItem(lsKey())
-    const legacy = legacyRaw ? JSON.parse(legacyRaw) : []
-    const scoped = scopedRaw ? JSON.parse(scopedRaw) : []
-    const localGoals = [...legacy, ...scoped]
+    if (!legacyRaw) return
 
-    if (localGoals.length === 0) return
-
-    // Get what's already in Supabase
-    const { data: remote } = await supabase.from('goals').select('text')
-    const remoteTexts = new Set((remote || []).map(g => g.text))
-
-    // Find goals that exist locally but not in Supabase
-    const toUpload = localGoals.filter(g => !remoteTexts.has(g.text))
-    if (toUpload.length === 0) return
+    let legacy = []
+    try { legacy = JSON.parse(legacyRaw) } catch {}
+    if (!Array.isArray(legacy) || legacy.length === 0) {
+      localStorage.removeItem('dayforge_goals')
+      return
+    }
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const rows = toUpload.map(g => ({
-      text: g.text,
-      progress: g.progress || 0,
-      done: g.done || false,
-      user_id: user.id,
-    }))
+    // Get what's already in Supabase to avoid duplicates
+    const { data: remote } = await supabase.from('goals').select('text')
+    const remoteTexts = new Set((remote || []).map(g => g.text))
 
-    await supabase.from('goals').insert(rows)
+    const toUpload = legacy.filter(g => !remoteTexts.has(g.text))
+    if (toUpload.length > 0) {
+      const rows = toUpload.map(g => ({
+        text: g.text,
+        progress: g.progress || 0,
+        done: g.done || false,
+        user_id: user.id,
+      }))
+      await supabase.from('goals').insert(rows)
+    }
 
-    // Clean up legacy key
-    if (legacyRaw) localStorage.removeItem('dayforge_goals')
+    // One-shot: always clear the legacy key after attempting migration
+    localStorage.removeItem('dayforge_goals')
   } catch {}
 }
 
@@ -53,24 +55,32 @@ export default function GoalsPanel() {
   const [goals, setGoals] = useState(lsLoad)
   const [input, setInput] = useState('')
   const [adding, setAdding] = useState(false)
+  const [targetDate, setTargetDate] = useState('')
 
   const fetchGoals = useCallback(async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return // Don't wipe goals if not authenticated
+
       const { data, error } = await supabase
         .from('goals')
         .select('*')
         .order('created_at', { ascending: true })
-      if (!error && data) {
-        const mapped = data.map(g => ({
-          id: g.id,
-          text: g.text,
-          progress: g.progress,
-          done: g.done,
-          created: new Date(g.created_at).getTime(),
-        }))
-        setGoals(mapped)
-        lsSave(mapped)
-      }
+      if (error) return // Don't wipe goals on error
+
+      const mapped = (data || []).map(g => ({
+        id: g.id,
+        text: g.text,
+        progress: g.progress,
+        done: g.done,
+        target_date: g.target_date || null,
+        created: new Date(g.created_at).getTime(),
+      }))
+
+      // Supabase is the source of truth. An empty result means the user
+      // has no goals — never re-upload from local cache, that undoes deletes.
+      setGoals(mapped)
+      lsSave(mapped)
     } catch {}
   }, [])
 
@@ -96,13 +106,15 @@ export default function GoalsPanel() {
     const text = input.trim()
     if (!text) return
 
-    const localGoal = { id: crypto.randomUUID(), text, progress: 0, done: false, created: Date.now() }
+    const date = targetDate || null
+    const localGoal = { id: crypto.randomUUID(), text, progress: 0, done: false, target_date: date, created: Date.now() }
     setGoals(prev => {
       const next = [...prev, localGoal]
       lsSave(next)
       return next
     })
     setInput('')
+    setTargetDate('')
     setAdding(false)
 
     try {
@@ -110,11 +122,11 @@ export default function GoalsPanel() {
       if (!user) return
       const { data } = await supabase
         .from('goals')
-        .insert({ text, progress: 0, done: false, user_id: user.id })
+        .insert({ text, progress: 0, done: false, target_date: date, user_id: user.id })
         .select()
         .single()
       if (data) {
-        const remote = { id: data.id, text: data.text, progress: data.progress, done: data.done, created: new Date(data.created_at).getTime() }
+        const remote = { id: data.id, text: data.text, progress: data.progress, done: data.done, target_date: data.target_date || null, created: new Date(data.created_at).getTime() }
         setGoals(prev => {
           const next = prev.map(g => g.id === localGoal.id ? remote : g)
           lsSave(next)
@@ -200,9 +212,31 @@ export default function GoalsPanel() {
             <button type="submit" className="px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-xl transition-all duration-200 cursor-pointer">
               Add
             </button>
-            <button type="button" onClick={() => setAdding(false)} className="px-3 py-2 text-gray-500 hover:text-gray-300 text-sm transition-colors cursor-pointer">
+            <button type="button" onClick={() => { setAdding(false); setTargetDate('') }} className="px-3 py-2 text-gray-500 hover:text-gray-300 text-sm transition-colors cursor-pointer">
               ✕
             </button>
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <label className="text-[11px] text-gray-500">Target date</label>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={e => setTargetDate(e.target.value)}
+              min={new Date().toISOString().slice(0, 10)}
+              className="px-2 py-1 bg-gray-800/50 border border-gray-700/50 rounded-lg text-gray-300 text-xs focus:outline-none focus:border-purple-500/50 transition-all duration-200 [color-scheme:dark]"
+            />
+            {targetDate && (
+              <button
+                type="button"
+                onClick={() => setTargetDate('')}
+                className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+              >
+                clear
+              </button>
+            )}
+            {!targetDate && (
+              <span className="text-[10px] text-gray-600 italic">optional — leave blank for ongoing</span>
+            )}
           </div>
         </form>
       )}
@@ -287,6 +321,24 @@ function GoalItem({ goal, onProgress, onToggle, onDelete }) {
           <p className={`text-sm font-medium leading-snug ${goal.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>
             {goal.text}
           </p>
+          {goal.target_date && (
+            <p className={`text-[10px] mt-0.5 ${
+              !goal.done && goal.target_date < new Date().toISOString().slice(0, 10) ? 'text-red-400' :
+              !goal.done && goal.target_date === new Date().toISOString().slice(0, 10) ? 'text-amber-400' :
+              'text-gray-500'
+            }`}>
+              {(() => {
+                const d = new Date(goal.target_date + 'T00:00:00')
+                const today = new Date(); today.setHours(0,0,0,0)
+                const diff = Math.round((d - today) / 86400000)
+                if (diff === 0) return 'Due today'
+                if (diff === 1) return 'Due tomorrow'
+                if (diff === -1) return 'Due yesterday'
+                if (diff < 0) return `${Math.abs(diff)} days overdue`
+                return `Due in ${diff} days — ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+              })()}
+            </p>
+          )}
 
           {/* Progress bar + label */}
           {!goal.done && (
