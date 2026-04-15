@@ -48,16 +48,15 @@ export function useMonthStats(year, month) {
     }))
 
     const grouped = {}
-    let totalAll = 0
-    let completedAll = 0
 
     // Iterate every day of the month up to today. Future days stay empty.
     const [yyyy, mm] = start.split('-').map(Number)
     const lastDay = new Date(yyyy, mm, 0).getDate()
+    const mtdEnd = today < end ? today : end // month-to-date cap
 
     for (let d = 1; d <= lastDay; d++) {
       const dateStr = `${yyyy}-${String(mm).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-      if (dateStr > today) break // don't count future days
+      if (dateStr > today) break // don't render future days
 
       let total = 0
       let completed = 0
@@ -78,13 +77,27 @@ export function useMonthStats(year, month) {
           completed,
           percentage: Math.round((completed / total) * 100),
         }
-        totalAll += total
-        completedAll += completed
+      }
+    }
+
+    // Month-to-date productivity: count each task ONCE.
+    // Numerator = tasks completed between month-start and today.
+    // Denominator = unique tasks that were live on any day from month-start
+    //   through today (created <= today AND (open OR completed >= start)).
+    let uniqueLive = 0
+    let uniqueCompleted = 0
+    for (const t of tasks) {
+      if (!t.createdDate || t.createdDate > mtdEnd) continue
+      const wasLive = !t.completedDate || t.completedDate >= start
+      if (!wasLive) continue
+      uniqueLive++
+      if (t.completedDate && t.completedDate >= start && t.completedDate <= mtdEnd) {
+        uniqueCompleted++
       }
     }
 
     setDays(grouped)
-    setMonthProductivity(totalAll > 0 ? Math.round((completedAll / totalAll) * 100) : 0)
+    setMonthProductivity(uniqueLive > 0 ? Math.round((uniqueCompleted / uniqueLive) * 100) : 0)
     setLoading(false)
   }, [year, month])
 
